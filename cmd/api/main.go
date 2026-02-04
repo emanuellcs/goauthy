@@ -1,43 +1,60 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	"github.com/emanuellcs/goauthy/internal/api"
 	"github.com/emanuellcs/goauthy/internal/config"
 )
 
 func main() {
-	// Initialize Logger (JSON format is better for production/Docker)
+	// Setup Logger
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	logger.Info("Starting GoAuthy Service...")
-
-	// Load Configuration
+	// Load Config
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		logger.Error("Failed to load configuration", "error", err)
+		slog.Error("Failed to load config", "error", err)
 		os.Exit(1)
 	}
 
-	// Verify Configuration (Sanity Check)
-	logger.Info("Configuration loaded successfully",
-		"env", cfg.Server.Env,
-		"port", cfg.Server.Port,
-		"strategy_steps", len(cfg.Strategy.Steps),
-		"twilio_account", maskString(cfg.Twilio.AccountSID), // Never log full secrets
-	)
+	// Initialize Server
+	srv := api.NewServer(cfg)
 
-	// Keep the app alive for now
-	fmt.Println("Server is ready to accept connections (mock)...")
-}
+	// Start Server in a Goroutine
+	// We do this so it doesn't block the main thread, allowing us to listen for signals below.
+	go func() {
+		if err := srv.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("HTTP server error", "error", err)
+			os.Exit(1)
+		}
+	}()
 
-// Helper to mask sensitive data in logs
-func maskString(s string) string {
-	if len(s) <= 4 {
-		return "****"
+	// Wait for Interrupt Signal (Graceful Shutdown)
+	quit := make(chan os.Signal, 1)
+	// SIGINT = Ctrl+C, SIGTERM = Docker stop
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	// Block here until signal is received
+	sig := <-quit
+	slog.Info("Shutdown signal received", "signal", sig.String())
+
+	// Execute Shutdown with Timeout
+	// We give the server 10 seconds to finish ongoing requests.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		slog.Error("Server forced to shutdown", "error", err)
 	}
-	return s[:4] + "****" + s[len(s)-4:]
+
+	slog.Info("Server exited properly")
 }

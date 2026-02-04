@@ -1,0 +1,14 @@
+server:
+  port: 8080
+  env: "development"
+
+strategy:
+  otp_length: 6
+  otp_expiration: "300s" # 5 minutes
+  steps:
+    - method: "whatsapp"
+      timeout: "15s"
+    - method: "sms"
+      timeout: "30s"
+    - method: "voice"
+      timeout: "60s"

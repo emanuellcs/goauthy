@@ -6,17 +6,19 @@ import (
 	"log/slog"
 
 	"github.com/emanuellcs/goauthy/internal/config"
+	"github.com/emanuellcs/goauthy/internal/core/ports"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
 
 type Server struct {
-	echo   *echo.Echo
-	config *config.Config
+	echo       *echo.Echo
+	config     *config.Config
+	otpService ports.OTPService
 }
 
 // NewServer initializes the Echo server with middleware and configuration
-func NewServer(cfg *config.Config) *Server {
+func NewServer(cfg *config.Config, service ports.OTPService) *Server {
 	e := echo.New()
 
 	// Hide the Echo banner on startup (we use our own logs)
@@ -29,8 +31,9 @@ func NewServer(cfg *config.Config) *Server {
 	e.Use(middleware.CORS())    // Essential for web clients
 
 	s := &Server{
-		echo:   e,
-		config: cfg,
+		echo:       e,
+		config:     cfg,
+		otpService: service,
 	}
 
 	s.setupRoutes()

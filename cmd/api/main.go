@@ -10,8 +10,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/emanuellcs/goauthy/internal/adapter/provider"
 	"github.com/emanuellcs/goauthy/internal/api"
 	"github.com/emanuellcs/goauthy/internal/config"
+	"github.com/emanuellcs/goauthy/internal/core/ports"
+	"github.com/emanuellcs/goauthy/internal/core/service"
 )
 
 func main() {
@@ -26,8 +29,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize Server
-	srv := api.NewServer(cfg)
+	// Initialize Adapters (Infrastructure)
+	var smsProvider ports.CommunicationProvider = provider.NewMockProvider()
+
+	// Initialize Core Service (Domain Logic)
+	otpService := service.NewOTPService(cfg, smsProvider)
+
+	// Initialize HTTP Server (Primary Adapter)
+	srv := api.NewServer(cfg, otpService)
 
 	// Start Server in a Goroutine
 	// We do this so it doesn't block the main thread, allowing us to listen for signals below.
